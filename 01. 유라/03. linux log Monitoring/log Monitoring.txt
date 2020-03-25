@@ -1,0 +1,126 @@
+#!/bin/sh
+export LANG=en
+
+ServerIP=""
+ErrorMSG=""
+today=`date +%a`
+LoGLineNum=0
+
+ServerIP=`hostname -i`
+
+beginJob=$(date)
+beginTime=$(date +%s%N)
+logpath="/db/arc_log"
+
+export PGPASSWORD='1588yura!'
+
+if [ ! -d $logpath ]; then
+    mkdir $logpath
+    chown -R postgres.postgres $logpath
+fi
+
+#taewon start
+
+arrayLog=()
+
+function saveErrorLog()        # 모니터링으로 저장된 에러로그를 파일에 저장
+{
+    # 저장된 로그중 마지막 Line 가져오기
+    logFullPath=$logpath/`date '+%y%m%d'`_`hostname`_arc.log
+    recentLog=`echo $line | sed -n '$p' $logFullPath`
+
+    # 에러로그만 저장하는  파일의 마지막 줄  =  ${recentLog}
+    # 배열에 저장된 로그 마지막 줄           =  ${arrayLog[i]}
+    if [ "${recentLog}" =  "${arrayLog[$i]//^|r|n/ }" ]; then
+        echo "에러 로그 상태 동일"
+        return
+    else
+        echo ""
+    fi
+
+    j=`expr ${#arrayLog[@]}`
+
+    for (( i=j; i>=0; i--))
+    do
+        # 화면에 출력하기 위한 echo
+        echo "Write Error Log = "${arrayLog[$i]//^|r|n/ }
+
+        # log 파일에 저장하는 echo
+        echo "${arrayLog[$i]//^|r|n/ }" >>  $logpath/`date '+%y%m%d'`_`hostname`_arc.log 2>&1
+    done
+
+    java -jar /db/Push_Send/push.jar
+}
+
+#taewon end
+
+tac /opt/ARCserveRHA/bin/log/ws_rep.log | \
+#tac /db/postgresql_9.6.2/data/pg_log/postgresql-"${today}".log | \
+#tac /twTest/test1_postgresql-"${today}".log | \
+while read line
+do
+
+  # 로그에서 한줄씩 내용을 읽고, 읽은 줄에 로그 상태가 포함되어있는지 확인
+  # 로그 상태가 포함되어 있지 않으면 쿼리문만 있는 것으로 판단하여 다음줄로 넘어간다
+  #if [ $line == *"Map for journal"*]
+  #then
+  #    echo ""
+  #else
+  #    continue
+  #fi
+
+  LoGLineNum=`expr $LoGLineNum + 1`
+
+  echo "${LoGLineNum}"
+
+  logType=${line#*err=xonet error,}      # 'err=xonet error,' 이후 문자 가져오기
+  ErrorMSG=${line}
+  logType=${line}
+  #logType=${logType%%:*}                # log type만 잘라오기
+
+  #echo ${ErrorMSG}"----------------------------Error1"
+  #echo $logType--------------------------------Error2
+
+      if [[ "$logType" == *"/opt/HA_script/stop.sh"* ]]
+      #if [ "$logType" = *"connection to remote engine closed"* ]
+      then
+          #taewon start
+          echo "....Check Error"
+          changeLine=${line// /^|r|n}
+          arrayLog+=("${changeLine}")
+          #taewon end
+
+
+          #echo ".....Save" $logType
+          #echo $line >> $logpath/`date '+%y%m%d'`_`hostname`_arc.log 2>&1
+          #java -jar /db/Push_Send/push.jar
+          #continue
+          ##break
+      else
+         echo "....Pass"
+         # break
+         #continue
+      fi
+
+  if [ "$LoGLineNum" = "5" ]
+  then
+      #taewon start
+      if [ "${arrayLog[0]}" = "" ]    # 에러로그가 배열에 저장되었는지 체크
+      then
+          echo "Not Found Error"
+      else
+          echo "Call Error Function"
+          saveErrorLog arrayLog[@]
+      fi
+      #taewon end
+
+      break
+  fi
+
+done
+
+echo "Finish"
+
+
+
+
