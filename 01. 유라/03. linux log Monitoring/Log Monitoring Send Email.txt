@@ -1,0 +1,104 @@
+cd /twTest
+
+#!/bin/sh
+export LANG=en
+
+ServerIP=""
+ErrorMSG=""
+today=`date +%a`
+#LoGLineNum=0
+logReport=()
+arrayLog=()
+
+ServerIP=`hostname -i`
+
+
+# 저장된 가장 최신 로그 가져오기
+recentLog=`echo $line | sed -n '$p' logMonitoring.txt`
+
+# 모니터링으로  확인한 로그를 기록한다.
+function saveLog()
+{
+ j=`expr ${#arrayLog[@]} - 1`
+
+ for (( i=j; i>=0; i-- ))
+ do
+   echo "asdf"
+   echo "${arrayLog[$i]//^|r|n/ }"                         # 화면 출력 echo
+   echo "${arrayLog[$i]//^|r|n/ }" >> logMonitoring.txt    # txt 파일에 저장하는 echo
+ done
+ echo "--------------------"
+}
+
+
+#tac /db/postgresql_9.6.2/data/pg_log/postgresql-"${today}".log | \
+tac /twTest/test1_postgresql-"${today}".log | \
+while read line
+do
+
+  # 로그에서 한줄씩 내용을 읽고, 읽은 줄에 로그 상태가 포함되어있는지 확인
+  # 로그 상태(Log, Error, State ...)가 포함되어 있지 않으면 쿼리문, vacuum 등 로그 상태가 없는  것으로
+  # 판단하여 다음줄로 넘어간다
+  if [[ $line == *"mesplus"* ]] || [[ $line == *"postgres"* ]]
+  then
+      echo ""
+  else
+      continue
+  fi
+
+
+  logReport=("${line}")
+  if [ "${recentLog:2:23}" = "${line:2:23}" ]
+  then
+    saveLog arrayLog[@]
+    break
+  else
+    log=${logReport// /^|r|n}
+    arrayLog+=("${log}")
+  fi
+
+  #LoGLineNum=`expr $LoGLineNum + 1`
+
+  logType=${line#*>}                    # '>' 이후 문자 가져오기
+  ErrorMSG=${line}
+  logType=${logType%%:*}                # log type만 잘라오기
+
+
+  if [ "$logType" = "ERROR" ]
+  then
+      echo "Error Log = "${ErrorMSG}
+      if [[ "$ErrorMSG" == *"MESSAGE"* ]] || [[ "$ErrorMSG" == *"today"* ]] || [[ "$ErrorMSG" == *"syntax"* ]]
+      then
+          SUBJECT="Postgresql DB Error"
+          EMAIL_MSG="Server IP = "${ServerIP}"\n\nError Message = "${ErrorMSG}
+
+          echo -e "$EMAIL_MSG" | mail -s "$SUBJECT" xodnjs9310@naver.com
+
+          echo -e "\nsend mail\n"
+
+          sleep 10s # Waits 10 seconds
+      else
+          echo "Error : not send mail"
+      fi
+  else
+      echo "Not Error!!"
+  fi
+
+  #if [ "$LoGLineNum" = "3" ]
+  #then
+  #    break
+  #fi
+done
+
+echo $arrayLog
+
+echo "Finish"
+
+
+
+
+
+
+
+
+
